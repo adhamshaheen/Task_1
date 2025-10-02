@@ -70,8 +70,55 @@ export async function createPerk(req, res, next) {
 // TODO
 // Update an existing perk by ID and validate only the fields that are being updated 
 export async function updatePerk(req, res, next) {
-  
+  try {
+    if (!req.body || Object.keys(req.body).length === 0) {
+      return res.status(400).json({ message: 'No fields provided for update' });
+    }
+
+    // Partial schema: same rules, but no defaults or required
+    const updateSchema = Joi.object({
+      title: Joi.string().min(2),
+      description: Joi.string().allow(''),
+      category: Joi.string().valid('food','tech','travel','fitness','other'),
+      discountPercent: Joi.number().min(0).max(100),
+      merchant: Joi.string().allow('')
+    });
+
+    const { value, error } = updateSchema.validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true,
+      //Important: prevent Joi from applying defaults during update
+      noDefaults: true 
+    });
+
+    if (error) {
+      const msg = error.details.map((d) => d.message).join(', ');
+      return res.status(400).json({ message: msg });
+    }
+
+    if (Object.keys(value).length === 0) {
+      return res.status(400).json({ message: 'No valid fields provided for update' });
+    }
+
+    // Apply only what the client sent
+    const updated = await Perk.findByIdAndUpdate(
+      req.params.id,
+      { $set: value },
+      { new: true, runValidators: true }
+    );
+
+    if (!updated) return res.status(404).json({ message: 'Perk not found' });
+
+    res.json({ perk: updated });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({ message: 'Duplicate perk for this merchant' });
+    }
+    next(err);
+  }
 }
+
+
 
 
 // Delete a perk by ID
